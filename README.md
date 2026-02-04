@@ -13,5 +13,5 @@
    `npm run dev`
 
 
+<img width="1903" height="1195" alt="image" src="https://github.com/user-attachments/assets/646c5889-8ded-4b5f-b681-7e0d17e4155a" />
 
-<img width="2560" height="1380" alt="image" src="https://github.com/user-attachments/assets/a6c97797-8236-4f89-98cb-706c64413505" />
