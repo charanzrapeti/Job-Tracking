@@ -3,12 +3,13 @@
     windows_subsystem = "windows"
 )]
 
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use rusqlite::{Connection, Result};
 use serde::{Serialize, Deserialize};
-use uuid::Uuid;
+use std::fs;
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct JobApplication {
     id: String,
     date_applied: String,
@@ -20,11 +21,24 @@ struct JobApplication {
     has_cover_letter: bool,
     cover_letter_name: Option<String>,
     cover_letter_content: Option<String>,
+     #[serde(rename = "type")]
     job_type: String,
 }
 
-fn init_db() -> Result<Connection> {
-    let conn = Connection::open("src-tauri/data/jobs.db")?;
+fn init_db(app: &AppHandle) -> Result<Connection> {
+    // ✅ Tauri v2 way to get app data dir
+    let mut path = app
+        .path()
+        .app_data_dir()
+        .expect("failed to get app data dir");
+
+    // Ensure directory exists
+    fs::create_dir_all(&path).ok();
+
+    path.push("jobs.db");
+
+    let conn = Connection::open(path)?;
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS jobs (
             id TEXT PRIMARY KEY,
@@ -41,15 +55,23 @@ fn init_db() -> Result<Connection> {
         )",
         [],
     )?;
+
     Ok(conn)
 }
 
 #[tauri::command]
-fn add_job(job: JobApplication) -> Result<String, String> {
-    let conn = init_db().map_err(|e| e.to_string())?;
+fn add_job(app: AppHandle, job: JobApplication) -> Result<String, String> {
+    let conn = init_db(&app).map_err(|e| e.to_string())?;
+
+    // clone once so we can return it
+    let job_id = job.id.clone();
+
     conn.execute(
-        "INSERT INTO jobs (id, date_applied, job_title, company_name, url, status, resume_name, has_cover_letter, cover_letter_name, cover_letter_content, job_type)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO jobs (
+            id, date_applied, job_title, company_name, url, status,
+            resume_name, has_cover_letter, cover_letter_name,
+            cover_letter_content, job_type
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         (
             job.id,
             job.date_applied,
@@ -63,14 +85,26 @@ fn add_job(job: JobApplication) -> Result<String, String> {
             job.cover_letter_content,
             job.job_type,
         ),
-    ).map_err(|e| e.to_string())?;
-    Ok(job.id)
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(job_id)
 }
 
 #[tauri::command]
-fn get_jobs() -> Result<Vec<JobApplication>, String> {
-    let conn = init_db().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare("SELECT id, date_applied, job_title, company_name, url, status, resume_name, has_cover_letter, cover_letter_name, cover_letter_content, job_type FROM jobs").map_err(|e| e.to_string())?;
+fn get_jobs(app: AppHandle) -> Result<Vec<JobApplication>, String> {
+    let conn = init_db(&app).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                id, date_applied, job_title, company_name, url, status,
+                resume_name, has_cover_letter, cover_letter_name,
+                cover_letter_content, job_type
+             FROM jobs",
+        )
+        .map_err(|e| e.to_string())?;
+
     let job_iter = stmt
         .query_map([], |row| {
             Ok(JobApplication {
@@ -93,6 +127,7 @@ fn get_jobs() -> Result<Vec<JobApplication>, String> {
     for job in job_iter {
         jobs.push(job.map_err(|e| e.to_string())?);
     }
+
     Ok(jobs)
 }
 

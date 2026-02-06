@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import {invoke} from "@tauri-apps/api/core"
 import { 
   Plus, 
   Search, 
@@ -55,16 +56,13 @@ const App: React.FC = () => {
 
   // Initial Load with Fake Delay
   useEffect(() => {
-    const loadData = async () => {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      const saved = localStorage.getItem('job_applications');
-      if (saved) {
-        setJobs(JSON.parse(saved));
-      }
+    const loadJobs = async () => {
+
+      const data: JobApplication[] = await invoke('get_jobs');
+      setJobs(data);
       setIsInitialLoading(false);
     };
-    loadData();
+    loadJobs();
   }, []);
 
   const stats: AppStats = useMemo(() => {
@@ -109,17 +107,18 @@ const App: React.FC = () => {
     return Array.from(new Set(jobs.map(j => j.coverLetterName).filter(Boolean)));
   }, [jobs]);
 
-  const handleAddJob = (job: JobApplication) => {
-    if (editingJob) {
-      setJobs(prev => prev.map(j => j.id === editingJob.id ? job : j));
-    } else {
-      setJobs(prev => [job, ...prev]);
-    }
-    setIsModalOpen(false);
-    setEditingJob(undefined);
-    setIsDirty(true);
-  };
-
+// Save a new or edited job
+const handleAddJob = async (job: JobApplication) => {
+  if (!job.id) {
+    job.id = crypto.randomUUID(); // generate unique ID
+  }
+  await invoke('add_job', { job });
+  // Refresh local state from DB
+  const updated: JobApplication[] = await invoke('get_jobs');
+  setJobs(updated);
+  setIsModalOpen(false);
+  setEditingJob(undefined);
+};
   const handleSync = async () => {
     setIsSyncing(true);
     // Simulate cloud sync delay
